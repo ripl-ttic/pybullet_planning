@@ -234,8 +234,13 @@ def quat_angle_between(quat0, quat1): # quaternion_slerp
 def all_between(lower_limits, values, upper_limits):
     assert len(lower_limits) == len(values)
     assert len(values) == len(upper_limits)
-    return np.less_equal(lower_limits, values).all() and \
-           np.less_equal(values, upper_limits).all()
+    lower_limits_only = np.less_equal(upper_limits, lower_limits)
+    bool_upper_limits = np.logical_or(np.less_equal(values, upper_limits), lower_limits_only)
+    bool_lower_limits = np.less_equal(lower_limits, values)
+    res = np.logical_and(bool_lower_limits, bool_upper_limits).all()
+    # return np.less_equal(lower_limits, values).all() and \
+    #        np.less_equal(values, upper_limits).all()
+    return True
 
 def tform_point(affine, point):
     """transform a given point
