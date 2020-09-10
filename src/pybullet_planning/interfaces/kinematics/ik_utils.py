@@ -107,3 +107,75 @@ def snap_sols(sols, q_guess, joint_limits, weights=None, best_sol_only=False):
         return valid_sols[best_sol_ind]
     else:
         return valid_sols
+
+def sample_multiple_ik_with_collision(ik, joint_collision_fn, sample_fn, tip_positions, num_samples, max_trials=30, tolerance=1e-02):
+    num_trial = 0
+    ik_solutions = []
+    done = False
+
+    # test if any IK solution exists
+    ik_sol = sample_ik_solution(ik, sample_fn, tip_positions)
+    if ik_sol is None:
+        print('No IK solution is found...')
+        return []
+
+    while not done:
+        # solve ik solutions for num_samples times and filter out those in collision
+        current_ik_solutions = [sample_ik_solution(ik, sample_fn, tip_positions) for _ in range(num_samples)]
+        current_ik_solutions = [sol for sol in current_ik_solutions if sol is not None]  # filter out None
+        current_ik_solutions = [current_ik_sol for current_ik_sol in current_ik_solutions if not joint_collision_fn(current_ik_sol)]
+        if len(current_ik_solutions) == 0:
+            return []
+        current_ik_solutions = np.asarray(current_ik_solutions)
+
+        if len(ik_solutions) == 0:
+            ik_solutions.append(current_ik_solutions[0])
+
+        while True:
+            #axis: ik_solusions, sample, dim
+            errors = np.array([np.abs(current_ik_solutions - ik_solution) for ik_solution in ik_solutions])
+            max_error_for_each_solutions = np.max(errors, axis=2)
+            bool_array = multiply_bool_array(max_error_for_each_solutions > tolerance)
+            if bool_array.any():
+                idx = np.argmax(bool_array)
+                ik_solutions.append(current_ik_solutions[idx])
+                #throw away similar vectors
+                current_ik_solutions = current_ik_solutions[np.where(bool_array==True)]
+            else:
+                break
+        num_trial += num_samples
+        if len(ik_solutions) >= num_samples or num_trial >= max_trials:
+            done = True
+    return np.array(ik_solutions[:num_samples])
+
+def multiply_bool_array(bool_array):
+    if len(bool_array) == 1:
+        return bool_array[0]
+    else:
+        output = bool_array[0]
+        for i in range(1, len(bool_array)):
+            output = np.multiply(output, bool_array[i])
+        return output
+
+
+def sample_ik_solution(ik, sample_fn, target_tip_positions, max_trials=5):
+    done = False
+    count = 0
+    while not done and count < max_trials:
+        joint_conf = sample_fn()
+        joint_conf = np.asarray(joint_conf, dtype=np.float64)
+        ik_solution = [
+            ik(i,
+               np.asarray(target_tip_positions[i], dtype=np.float32),
+               np.asarray(joint_conf, dtype=np.float64)
+            )
+            for i in range(3)
+        ]
+        # ik_solution = [ik(i, target_tip_positions[i], joint_conf) for i in range(3)]
+        done = (ik_solution[0] is not None) and (ik_solution[1] is not None) and (ik_solution[2] is not None)
+        count += 1
+    if done:
+        ik_solution = [ik_solution[i][3*i:3*(i+1)] for i in range(3)]
+        return np.concatenate(ik_solution)
+    else:
+        return None
