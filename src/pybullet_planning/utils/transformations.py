@@ -1572,3 +1572,41 @@ def _import_module(module_name, warn=True, prefix='_py_', ignore='_'):
     return True
 
 # https://github.com/ros/geometry/blob/hydro-devel/tf/src/tf/transformations.py
+
+
+def apply_transform(pos, ori, points):
+    import numpy as np
+    import pybullet as p
+    T = np.eye(4)
+    T[:3, :3] = np.array(p.getMatrixFromQuaternion(ori)).reshape((3, 3))
+    T[:3, -1] = pos
+    if len(points.shape) == 1:
+        points = points[None]
+    homogeneous = points.shape[-1] == 4
+    if not homogeneous:
+        points_homo = np.ones((points.shape[0], 4))
+        points_homo[:, :3] = points
+        points = points_homo
+
+    points = T.dot(points.T).T
+    if not homogeneous:
+        points = points[:, :3]
+    return points
+
+
+def assign_positions_to_fingers(tips, goal_tips):
+    import numpy as np
+    import itertools
+
+    min_cost = 1000000
+    opt_tips = []
+    opt_inds = [0, 1, 2]
+    for v in itertools.permutations([0, 1, 2]):
+        sorted_tips = goal_tips[v, :]
+        cost = np.linalg.norm(sorted_tips - tips)
+        if min_cost > cost:
+            min_cost = cost
+            opt_tips = sorted_tips
+            opt_inds = v
+
+    return opt_tips, opt_inds

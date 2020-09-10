@@ -365,6 +365,7 @@ def get_collision_fn(body, joints, obstacles=[],
     from pybullet_planning.interfaces.robots.joint import set_joint_positions, get_custom_limits
     from pybullet_planning.interfaces.robots.link import get_self_link_pairs, get_moving_links
     from pybullet_planning.interfaces.debug_utils.debug_utils import draw_collision_diagnosis
+    from pybullet_planning.interfaces.env_manager.pose_transformation import set_pose
     moving_links = frozenset(get_moving_links(body, joints))
     attached_bodies = [attachment.child for attachment in attachments]
     moving_bodies = [(body, moving_links)] + attached_bodies
@@ -414,8 +415,15 @@ def get_collision_fn(body, joints, obstacles=[],
                     if cr_u:
                         print('J{}: {} > upper limit {}'.format(i, q[i], upper_limits[i]))
             return True
-        # * set body & attachment positions
-        set_joint_positions(body, joints, q)
+        # dummy joints
+        if all(joint < -1 for joint in joints):
+            cube_pos = q[:3]
+            cube_ori = q[3:]
+            cube_quat = p.getQuaternionFromEuler(cube_ori)
+            set_pose(body, (cube_pos, cube_quat))
+        else:
+            # * set body & attachment positions
+            set_joint_positions(body, joints, q)
         for attachment in attachments:
             attachment.assign()
         # * self-collision link check
@@ -444,6 +452,30 @@ def get_collision_fn(body, joints, obstacles=[],
                 return True
         return False
     return collision_fn
+
+
+def get_cube_tip_collision_fn(cube_body, joints, finger_body, finger_joints,
+                              obstacles=[], attachments=[], self_collisions=True,
+                              disabled_collisions={},
+                              extra_disabled_collisions={},
+                              custom_limits={}, vis_fn=None, **kwargs):
+    from pybullet_planning.interfaces.robots.joint import set_joint_positions
+    collision_fn = get_collision_fn(cube_body, joints, obstacles=obstacles,
+                                    attachments=attachments, self_collisions=self_collisions,
+                                    disabled_collisions=disabled_collisions,
+                                    extra_disabled_collisions=extra_disabled_collisions,
+                                    custom_limits=custom_limits, **kwargs)
+
+    def cube_tip_collision_fn(cube_pose, joint_conf, diagnosis=False):
+        if vis_fn is not None:
+            cube_pos = cube_pose[:3]
+            cube_quat = p.getQuaternionFromEuler(cube_pose[3:])
+            vis_fn(cube_pos, cube_quat)
+        set_joint_positions(finger_body, finger_joints, joint_conf)
+        return collision_fn(cube_pose, diagnosis)
+    return cube_tip_collision_fn
+
+
 
 def get_floating_body_collision_fn(body, obstacles=[], attachments=[], disabled_collisions={}, **kwargs):
     """get collision checking function collision_fn(joint_values) -> bool for a floating body (no movable joint).

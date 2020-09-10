@@ -5,9 +5,14 @@ from .utils import irange, argmin, RRT_ITERATIONS
 
 class TreeNode(object):
 
-    def __init__(self, config, parent=None):
+    def __init__(self, config, parent=None, ik_solution=None, group=None):
         self.config = config
         self.parent = parent
+        self.ik_solution = ik_solution
+        if group is None:
+            self.group = [self]  # By default, itself belongs to the group without any other nodes
+        else:
+            self.group = group
 
     #def retrace(self):
     #    if self.parent is None:
@@ -21,6 +26,16 @@ class TreeNode(object):
             sequence.append(node)
             node = node.parent
         return sequence[::-1]
+
+    def retrace_all(self):
+        sequence = []
+        joint_conf_sequence = []
+        node = self
+        while node is not None:
+            sequence.append(node)
+            joint_conf_sequence.append(node.ik_solution)
+            node = node.parent
+        return sequence[::-1], joint_conf_sequence[::-1]
 
     def clear(self):
         self.node_handle = None
@@ -43,6 +58,10 @@ def configs(nodes):
         return None
     return list(map(lambda n: n.config, nodes))
 
+def extract_ik_solutions(nodes):
+    if nodes is None:
+        return None
+    return list(map(lambda n: n.ik_solution, nodes))
 
 def rrt(start, goal_sample, distance, sample, extend, collision, goal_test=lambda q: False, iterations=RRT_ITERATIONS, goal_probability=.2):
     if collision(start):

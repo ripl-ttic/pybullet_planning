@@ -8,9 +8,10 @@ from pybullet_planning.interfaces.env_manager.pose_transformation import circula
 from pybullet_planning.interfaces.env_manager.user_io import wait_for_user
 from pybullet_planning.interfaces.debug_utils import add_line
 from pybullet_planning.interfaces.robots.joint import get_custom_limits, get_joint_positions
-from pybullet_planning.interfaces.robots.collision import get_collision_fn
+from pybullet_planning.interfaces.robots.collision import get_collision_fn, get_cube_tip_collision_fn
 
-from pybullet_planning.motion_planners import birrt, lazy_prm
+from pybullet_planning.motion_planners import birrt, wholebody_birrt, lazy_prm
+import pybullet as p
 
 #####################################
 
@@ -66,13 +67,15 @@ def get_difference_fn(body, joints):
                      for circular, value2, value1 in zip(circular_joints, q2, q1))
     return fn
 
-def get_distance_fn(body, joints, weights=None): #, norm=2):
+def get_distance_fn(body, joints, weights=None, weight_fn=None): #, norm=2):
     # TODO: use the energy resulting from the mass matrix here?
     if weights is None:
         weights = 1*np.ones(len(joints)) # TODO: use velocities here
     difference_fn = get_difference_fn(body, joints)
     def fn(q1, q2):
         diff = np.array(difference_fn(q2, q1))
+        if weight_fn is not None:
+            return weight_fn(diff)
         return np.sqrt(np.dot(weights, diff * diff))
         #return np.linalg.norm(np.multiply(weights * diff), ord=norm)
     return fn
@@ -107,6 +110,20 @@ def get_extend_fn(body, joints, resolutions=None, norm=2):
         refine_fn = get_refine_fn(body, joints, num_steps=steps)
         return refine_fn(q1, q2)
     return fn
+
+def get_calc_tippos_fn(current_tip_pos, cube_tip_pos, cube_pos, cube_qt):
+    from pybullet_planning.utils.transformations import apply_transform, assign_positions_to_fingers
+    target_tip_positions = apply_transform(cube_pos, cube_qt, cube_tip_pos)
+    target_tip_positions, tip_assignments = assign_positions_to_fingers(current_tip_pos, target_tip_positions)
+    sorted_cube_tip_positions = cube_tip_pos[tip_assignments, :]
+
+    def fn(cube_pose):
+        cube_pos = cube_pose[:3]
+        cube_qt = p.getQuaternionFromEuler(cube_pose[3:])
+        target_tip_positions = apply_transform(cube_pos, cube_qt, sorted_cube_tip_positions)
+        return target_tip_positions
+    return fn
+
 
 def remove_redundant(path, tolerance=1e-3):
     assert path
@@ -225,6 +242,30 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
         return None
     return birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, **kwargs)
     #return plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn)
+
+
+def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_conf, current_tip_pos, cube_tip_pos, ik, obstacles=[], attachments=[],
+                          self_collisions=True, disabled_collisions=set(), extra_disabled_collisions=set(),
+                          weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
+                          constraint_fn=None, vis_fn=None, **kwargs):
+    from pybullet_planning.interfaces.env_manager.pose_transformation import get_pose
+    from pybullet_planning.motion_planners.utils import weighted_pose_error
+
+    assert len(joints) == len(end_conf)
+    sample_fn = get_sample_fn(cube_body, joints, custom_limits=custom_limits)
+    sample_joint_conf_fn = get_sample_fn(finger_body, finger_joints, custom_limits={})
+    distance_fn = get_distance_fn(cube_body, joints, weights=weights, weight_fn=weighted_pose_error)
+    extend_fn = get_extend_fn(cube_body, joints, resolutions=resolutions)
+    collision_fn = get_cube_tip_collision_fn(cube_body, joints, finger_body, finger_joints, obstacles=obstacles, attachments=attachments, self_collisions=self_collisions,
+                                             disabled_collisions=disabled_collisions, extra_disabled_collisions=extra_disabled_collisions,
+                                             custom_limits=custom_limits, max_distance=max_distance, vis_fn=vis_fn)
+
+     # obtain start configuration
+    start_pos, start_quat = get_pose(cube_body)
+    start_ori = p.getEulerFromQuaternion(start_quat)
+    start_conf = np.concatenate([start_pos, start_ori]).reshape(-1)
+    calc_tippos_fn = get_calc_tippos_fn(current_tip_pos, cube_tip_pos, start_pos, start_quat)
+    return wholebody_birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, **kwargs)
 
 def plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn, **kwargs):
     # TODO: cost metric based on total robot movement (encouraging greater distances possibly)

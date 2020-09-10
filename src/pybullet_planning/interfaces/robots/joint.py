@@ -129,6 +129,8 @@ def movable_from_joints(body, joints):
     return [movable_from_original[joint] for joint in joints]
 
 def is_circular(body, joint):
+    if joint < -1:  # dummy link
+        return False
     joint_info = get_joint_info(body, joint)
     if joint_info.jointType == p.JOINT_FIXED:
         return False
