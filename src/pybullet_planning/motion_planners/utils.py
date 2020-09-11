@@ -107,5 +107,5 @@ def weighted_pose_error(pose_diff):
     # scaled_error = (scaled_pos_error + scaled_rot_error) / 2
 
     # This may require some tuning:
-    scaled_error = (scaled_pos_error + scaled_rot_error * 0.2) / 2
+    scaled_error = (scaled_pos_error + scaled_rot_error) / 2
     return scaled_error
