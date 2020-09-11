@@ -51,7 +51,7 @@ def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
             group = []
             for ik_sol in ik_solutions[i]:
                 # find the argmin over ik solutions in the parent group
-                ik_last = argmin(lambda node: distance_fn(node.ik_solution, ik_sol), last.group)  #??? #FIXME
+                ik_last = argmin(lambda node: distance_fn(node.ik_solution, ik_sol), last.group)
                 last = TreeNode(q, parent=ik_last, ik_solution=ik_sol)
                 group.append(last)
                 tree.append(last)
