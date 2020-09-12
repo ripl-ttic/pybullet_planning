@@ -245,9 +245,8 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
 
 
 def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_conf, current_tip_pos, cube_tip_pos, ik, obstacles=[], attachments=[],
-                          self_collisions=True, disabled_collisions=set(), extra_disabled_collisions=set(),
-                          weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
-                          constraint_fn=None, vis_fn=None, **kwargs):
+                          disabled_collisions=set(), weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
+                          vis_fn=None, **kwargs):
     from pybullet_planning.interfaces.env_manager.pose_transformation import get_pose
     from pybullet_planning.motion_planners.utils import weighted_pose_error
 
@@ -256,9 +255,8 @@ def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_con
     sample_joint_conf_fn = get_sample_fn(finger_body, finger_joints, custom_limits={})
     distance_fn = get_distance_fn(cube_body, joints, weights=weights, weight_fn=weighted_pose_error)
     extend_fn = get_extend_fn(cube_body, joints, resolutions=resolutions)
-    collision_fn = get_cube_tip_collision_fn(cube_body, joints, finger_body, finger_joints, obstacles=obstacles, attachments=attachments, self_collisions=self_collisions,
-                                             disabled_collisions=disabled_collisions, extra_disabled_collisions=extra_disabled_collisions,
-                                             custom_limits=custom_limits, max_distance=max_distance, vis_fn=vis_fn)
+    collision_fn = get_cube_tip_collision_fn(cube_body, finger_body, finger_joints, obstacles=obstacles, attachments=attachments,
+                                             disabled_collisions=disabled_collisions, diagnosis=diagnosis, vis_fn=vis_fn, max_distance=max_distance)
 
      # obtain start configuration
     start_pos, start_quat = get_pose(cube_body)

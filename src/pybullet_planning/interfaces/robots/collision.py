@@ -454,25 +454,23 @@ def get_collision_fn(body, joints, obstacles=[],
     return collision_fn
 
 
-def get_cube_tip_collision_fn(cube_body, joints, finger_body, finger_joints,
-                              obstacles=[], attachments=[], self_collisions=True,
-                              disabled_collisions={},
-                              extra_disabled_collisions={},
-                              custom_limits={}, vis_fn=None, **kwargs):
+def get_cube_tip_collision_fn(cube_body, finger_body, finger_joints,
+                              obstacles=[], attachments=[],
+                              disabled_collisions={}, diagnosis=False,
+                              vis_fn=None, **kwargs):
     from pybullet_planning.interfaces.robots.joint import set_joint_positions
-    collision_fn = get_collision_fn(cube_body, joints, obstacles=obstacles,
-                                    attachments=attachments, self_collisions=self_collisions,
-                                    disabled_collisions=disabled_collisions,
-                                    extra_disabled_collisions=extra_disabled_collisions,
-                                    custom_limits=custom_limits, **kwargs)
+    collision_fn = get_floating_body_collision_fn(
+        cube_body, obstacles=obstacles, attachments=attachments,
+        disabled_collisions=disabled_collisions,
+        **kwargs)
 
-    def cube_tip_collision_fn(cube_pose, joint_conf, diagnosis=False):
+    def cube_tip_collision_fn(cube_pose, joint_conf, diagnosis=diagnosis):
+        cube_pos = cube_pose[:3]
+        cube_quat = p.getQuaternionFromEuler(cube_pose[3:])
         if vis_fn is not None:
-            cube_pos = cube_pose[:3]
-            cube_quat = p.getQuaternionFromEuler(cube_pose[3:])
             vis_fn(cube_pos, cube_quat)
         set_joint_positions(finger_body, finger_joints, joint_conf)
-        return collision_fn(cube_pose, diagnosis)
+        return collision_fn((cube_pos, cube_quat), diagnosis)
     return cube_tip_collision_fn
 
 

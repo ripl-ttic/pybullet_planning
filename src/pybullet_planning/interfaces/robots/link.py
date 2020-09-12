@@ -190,8 +190,6 @@ def get_fixed_links(body):
 def get_moving_links(body, joints):
     moving_links = set()
     for joint in joints:
-        if len(moving_links) == 0:
-            moving_links.add(BASE_LINK)
         link = child_link_from_joint(joint)
         if link not in moving_links:
             moving_links.update(get_link_subtree(body, link))
