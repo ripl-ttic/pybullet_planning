@@ -113,14 +113,14 @@ def get_extend_fn(body, joints, resolutions=None, norm=2):
 
 def get_calc_tippos_fn(current_tip_pos, cube_tip_pos, cube_pos, cube_qt):
     from pybullet_planning.utils.transformations import apply_transform, assign_positions_to_fingers
-    target_tip_positions = apply_transform(cube_pos, cube_qt, cube_tip_pos)
-    target_tip_positions, tip_assignments = assign_positions_to_fingers(current_tip_pos, target_tip_positions)
-    sorted_cube_tip_positions = cube_tip_pos[tip_assignments, :]
+    # target_tip_positions = apply_transform(cube_pos, cube_qt, cube_tip_pos)
+    # target_tip_positions, tip_assignments = assign_positions_to_fingers(current_tip_pos, target_tip_positions)
+    # sorted_cube_tip_positions = cube_tip_pos[tip_assignments, :]
 
     def fn(cube_pose):
         cube_pos = cube_pose[:3]
         cube_qt = p.getQuaternionFromEuler(cube_pose[3:])
-        target_tip_positions = apply_transform(cube_pos, cube_qt, sorted_cube_tip_positions)
+        target_tip_positions = apply_transform(cube_pos, cube_qt, cube_tip_pos)
         return target_tip_positions
     return fn
 
