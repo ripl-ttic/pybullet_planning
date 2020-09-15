@@ -1,7 +1,7 @@
 from random import randint
 
 
-def smooth_path(path, extend, collision, iterations=50):
+def smooth_path(path, extend, collision, iterations=200):
     """smooth a trajectory path, randomly replace jigged subpath with shortcuts
 
     Parameters

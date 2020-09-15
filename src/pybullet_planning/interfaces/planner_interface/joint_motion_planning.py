@@ -219,7 +219,7 @@ def check_initial_end(start_conf, end_conf, collision_fn, diagnosis=False):
 def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
                       self_collisions=True, disabled_collisions=set(), extra_disabled_collisions=set(),
                       weights=None, resolutions=None, max_distance=MAX_DISTANCE, ignore_collision_steps=0, custom_limits={}, diagnosis=False,
-                      constraint_fn=None, **kwargs):
+                      constraint_fn=None, max_dist_on=None, **kwargs):
     """call birrt to plan a joint trajectory from the robot's **current** conf to ``end_conf``.
     """
     assert len(joints) == len(end_conf)
@@ -228,7 +228,7 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
     extend_fn = get_extend_fn(body, joints, resolutions=resolutions)
     collision_fn = get_collision_fn(body, joints, obstacles=obstacles, attachments=attachments, self_collisions=self_collisions,
                                     disabled_collisions=disabled_collisions, extra_disabled_collisions=extra_disabled_collisions,
-                                    custom_limits=custom_limits, max_distance=max_distance)
+                                    custom_limits=custom_limits, max_distance=max_distance, max_dist_on=max_dist_on)
     if constraint_fn is not None:
         old_collision_fn = collision_fn
 

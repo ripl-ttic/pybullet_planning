@@ -27,18 +27,23 @@ def extend_towards(tree, target, distance_fn, extend_fn, collision_fn, swap, tre
     safe = []
     for i, q in enumerate(extend):
         path_length = len(last.retrace()) + i + 1  # path lengths to reach the node in this tree
-        if path_length <= ignore_collision_steps or not collision_fn(q):  # Necessary condition to be "safe" node
-            safe.append(q)
-            maybe_safe.append(q)
-        elif col_count < tolerable_col_steps:  # experienced collisions, but not too many steps passed after that
-            maybe_safe.append(q)
-        else:
-            break
-
-        if col_count > 0:  # if it experienced collision even once, the counter will be ticked every step after that
+        if collision_fn(q):
+            if path_length <= ignore_collision_steps:
+                maybe_safe.append(q)
+            elif col_count < tolerable_col_steps:  # experienced collisions, but not too many steps passed after that
+                maybe_safe.append(q)
+            else:
+                break
             col_count += 1
+        else:
+            if len(maybe_safe) == len(safe):  # the path has been safe so far.
+                safe.append(q)
+            maybe_safe.append(q)
 
-    success = len(extend) == len(maybe_safe)  # NOTE: maybe_safe contains safe
+            if col_count > 0:  # if it experienced collision even once, the counter will be ticked every step after that
+                col_count += 1
+
+    success = len(extend) == len(maybe_safe)  # NOTE: maybe_safe was actually safe!!
     if success:
         safe = maybe_safe  # We had some collisions but reached to the other tree within ignore_collision_steps!!
     # safe = list(takewhile(negate(collision_fn), extend))
@@ -49,7 +54,7 @@ def extend_towards(tree, target, distance_fn, extend_fn, collision_fn, swap, tre
     return last, success
 
 def rrt_connect(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn,
-                iterations=RRT_ITERATIONS, tree_frequency=1, max_time=INF, ignore_collision_steps=0):
+                iterations=RRT_ITERATIONS, tree_frequency=1, max_time=INF, ignore_collision_steps=0, **kwargs):
     """[summary]
 
     Parameters

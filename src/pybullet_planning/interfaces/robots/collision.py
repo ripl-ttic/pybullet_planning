@@ -88,7 +88,7 @@ def pairwise_link_collision_info(body1, link1, body2, link2=BASE_LINK, max_dista
                               linkIndexA=link1, linkIndexB=link2,
                               physicsClientId=CLIENT)
 
-def pairwise_link_collision(body1, link1, body2, link2=BASE_LINK, max_distance=MAX_DISTANCE):
+def pairwise_link_collision(body1, link1, body2, link2=BASE_LINK, max_distance=MAX_DISTANCE, max_dist_on=None):
     """check pairwise collision between bodies
 
     See getClosestPoints in <pybullet documentation `https://docs.google.com/document/d/10sXEhzFRSnvFcl3XxNGhnD4N2SedqwdAvK3dsihxVUA/edit?usp=sharing`>_
@@ -113,6 +113,13 @@ def pairwise_link_collision(body1, link1, body2, link2=BASE_LINK, max_distance=M
     Bool
         True if there is a collision, False otherwise
     """
+    if max_dist_on is not None:
+        for max_dist in max_dist_on:
+            target = ((body1, link1), (body2, link2))
+            if target in max_dist.body_link_pairs or target[::-1] in max_dist.body_link_pairs:
+                max_distance = max_dist.dist
+                break
+
     return len(pairwise_link_collision_info(body1, link1, body2, link2, max_distance)) != 0
 
 
@@ -428,7 +435,7 @@ def get_collision_fn(body, joints, obstacles=[],
             attachment.assign()
         # * self-collision link check
         for link1, link2 in self_check_link_pairs:
-            if pairwise_link_collision(body, link1, body, link2):
+            if pairwise_link_collision(body, link1, body, link2, **kwargs):
                 if diagnosis:
                     warnings.warn('moving body link - moving body link collision!', UserWarning)
                     cr = pairwise_link_collision_info(body, link1, body, link2)
