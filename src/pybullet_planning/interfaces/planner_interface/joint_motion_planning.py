@@ -218,7 +218,7 @@ def check_initial_end(start_conf, end_conf, collision_fn, diagnosis=False):
 
 def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
                       self_collisions=True, disabled_collisions=set(), extra_disabled_collisions=set(),
-                      weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
+                      weights=None, resolutions=None, max_distance=MAX_DISTANCE, ignore_collision_steps=0, custom_limits={}, diagnosis=False,
                       constraint_fn=None, **kwargs):
     """call birrt to plan a joint trajectory from the robot's **current** conf to ``end_conf``.
     """
@@ -238,14 +238,14 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
 
     start_conf = get_joint_positions(body, joints)
 
-    if not check_initial_end(start_conf, end_conf, collision_fn, diagnosis=diagnosis):
+    if ignore_collision_steps == 0 and not check_initial_end(start_conf, end_conf, collision_fn, diagnosis=diagnosis):
         return None
-    return birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, **kwargs)
+    return birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, ignore_collision_steps=ignore_collision_steps, **kwargs)
     #return plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn)
 
 
 def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_conf, current_tip_pos, cube_tip_pos, ik, obstacles=[], attachments=[],
-                          disabled_collisions=set(), weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
+                          init_joint_conf=None, disabled_collisions=set(), weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
                           vis_fn=None, **kwargs):
     from pybullet_planning.interfaces.env_manager.pose_transformation import get_pose
     from pybullet_planning.motion_planners.utils import weighted_pose_error
@@ -263,7 +263,7 @@ def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_con
     start_ori = p.getEulerFromQuaternion(start_quat)
     start_conf = np.concatenate([start_pos, start_ori]).reshape(-1)
     calc_tippos_fn = get_calc_tippos_fn(current_tip_pos, cube_tip_pos, start_pos, start_quat)
-    return wholebody_birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, **kwargs)
+    return wholebody_birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, init_joint_conf=init_joint_conf, **kwargs)
 
 def plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn, **kwargs):
     # TODO: cost metric based on total robot movement (encouraging greater distances possibly)
