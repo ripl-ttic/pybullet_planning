@@ -61,8 +61,9 @@ def wholebody_smooth_path(path, joint_conf_path, extend, collision, ik, calc_tip
         if len(shortcut) < (j - i):
             for cube_pose in shortcut:
                 tip_positions = calc_tippos_fn(cube_pose)
+                # Keep num_samples=1!!!!! This reallly slows down at larger values (and we only use the first one anyway)
                 ik_sols = sample_multiple_ik_with_collision(ik, functools.partial(collision, cube_pose),
-                                                            sample_joint_conf_fn, tip_positions, num_samples=3)
+                                                            sample_joint_conf_fn, tip_positions, num_samples=1)
                 if len(ik_sols) == 0:
                     failed = True
                     break

@@ -1,4 +1,5 @@
 import time
+from random import random
 
 from itertools import takewhile
 from .smoothing import wholebody_smooth_path
@@ -10,8 +11,10 @@ __all__ = [
     'wholebody_birrt',
     'wholebody_direct_path',
     'wholebody_best_effort_rrt',
-    'wholebody_best_effort_direct_path'
+    'wholebody_best_effort_direct_path',
+    'wholebody_rrt'
     ]
+
 
 def asymmetric_extend(q1, q2, extend_fn, backward=False):
     """directional extend_fn
@@ -20,8 +23,10 @@ def asymmetric_extend(q1, q2, extend_fn, backward=False):
         return reversed(list(extend_fn(q2, q1)))
     return extend_fn(q1, q2)
 
+
 def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
-                             calc_tippos_fn, sample_joint_conf_fn, ik, swap, tree_frequency, goal_test_fn=None):
+                             calc_tippos_fn, sample_joint_conf_fn, ik, swap,
+                             tree_frequency, goal_test_fn=None):
     import functools
     import numpy as np
     from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision, sample_no_collision_ik
@@ -34,6 +39,7 @@ def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
     # while such solution exist, it keeps appending the cube_pose to 'safe'
     # once it reaches a point where no such solution exist, it exits the loop.
     ik_solutions = []
+    at_goal = False
     for i, cube_pose in enumerate(extend):
         tip_positions = calc_tippos_fn(cube_pose)
         ik_sols = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, cube_pose),
@@ -47,31 +53,182 @@ def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
         safe.append(cube_pose)
 
         if goal_test_fn is not None and goal_test_fn(cube_pose):
-            success = True
-            extend = extend[:i + 1]
+            at_goal = True
+            break
 
     # print('safe length', len(safe))  # DEBUG
 
     # add the sequence of safe nodes to the Tree.
     # each node in safe has a corresponding set of IK solutions.
     # We create nodes for each of those IK solutions, and regard them as in a same group.
+    # for i, q in enumerate(safe):
+    #     if (i % tree_frequency == 0) or (i == len(safe) - 1):
+    #         # append node for every ik solution
+    #         group = []
+    #         for ik_sol in ik_solutions[i]:
+    #             # find the argmin over ik solutions in the parent group
+    #             ik_last = argmin(lambda node: distance_fn(node.ik_solution, ik_sol), last.group)
+    #             last = TreeNode(q, parent=ik_last, ik_solution=ik_sol)
+    #             group.append(last)
+    #             tree.append(last)
+    #
+    #         # add the nodes in the same group to node.group
+    #         for node in group:
+    #             node.group = group
     for i, q in enumerate(safe):
         if (i % tree_frequency == 0) or (i == len(safe) - 1):
             # append node for every ik solution
-            group = []
-            for ik_sol in ik_solutions[i]:
-                # find the argmin over ik solutions in the parent group
-                ik_last = argmin(lambda node: distance_fn(node.ik_solution, ik_sol), last.group)
-                last = TreeNode(q, parent=ik_last, ik_solution=ik_sol)
-                group.append(last)
-                tree.append(last)
+            ik_sol = ik_solutions[i][0]
+            last = TreeNode(q, parent=last, ik_solution=ik_sol)
+            tree.append(last)
+    if goal_test_fn:
+        return last, at_goal
+    else:
+        success = len(extend) == len(safe)
+        return last, success
 
-            # add the nodes in the same group to node.group
-            for node in group:
-                node.group = group
 
-    success = len(extend) == len(safe)
-    return last, success
+def rrt_goal_sample(goal_test, end_pose, goal_threshold, ori_matters):
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+    from pybullet_planning.motion_planners.utils import weighted_position_error
+
+    def _sample():
+        pos_noise = (np.random.rand(3) - 0.5) * goal_threshold
+        if weighted_position_error(pos_noise) > goal_threshold:
+            pos_noise = goal_threshold * pos_noise / np.linalg.norm(pos_noise)
+        pos = end_pose[:3] + pos_noise
+        axis = np.random.rand(3) - 0.5
+        axis /= np.linalg.norm(axis)
+        if ori_matters:
+            angle = np.pi * np.random.rand() * goal_threshold
+            rot_noise = Rotation.from_rotvec(angle * axis)
+            rot = Rotation.from_euler('zyx', end_pose[3:])
+            ori = (rot_noise * rot).as_euler('zyx')
+        else:
+            angle = np.pi * np.random.rand()
+            ori = Rotation.from_rotvec(angle * axis).as_euler('zyx')
+        return np.concatenate([pos, ori])
+    s = _sample()
+    it = 0
+    max_it = 100
+    while not goal_test(s) and it < max_it:
+        s = _sample()
+        it += 1
+    if it == max_it:
+        return end_pose
+    return s
+
+
+def wholebody_rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
+                  extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn,
+                  ik, goal_probability=0.2, iterations=RRT_ITERATIONS,
+                  tree_frequency=1, max_time=INF, restarts=RRT_RESTARTS,
+                  smoothing=RRT_SMOOTHING):
+    start_time = time.time()
+    for _ in range(restarts):
+        elapsed_time = time.time() - start_time
+        if elapsed_time >= max_time:
+            return None, None
+        path, joint_path = _rrt(q1, goal_sample_fn, goal_test, distance_fn,
+                                sample_fn, extend_fn, collision_fn,
+                                calc_tippos_fn, sample_joint_conf_fn, ik,
+                                goal_probability, iterations, tree_frequency,
+                                max_time=max_time - elapsed_time)
+        if path is not None:
+            if smoothing is None:
+                return path, joint_path
+            return wholebody_smooth_path(path, joint_path, extend_fn,
+                                         collision_fn, ik, calc_tippos_fn,
+                                         sample_joint_conf_fn,
+                                         iterations=smoothing)
+    return None, None
+
+
+def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
+         extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn,
+         ik, goal_probability=0.2, iterations=RRT_ITERATIONS,
+         tree_frequency=1, max_time=INF):
+    """[summary]
+
+    Parameters
+    ----------
+    q1 : [type]
+        [description]
+    q2 : [type]
+        [description]
+    distance_fn : [type]
+        [description]
+    sample_fn : [type]
+        [description]
+    extend_fn : [type]
+        [description]
+    collision_fn : [type]
+        [description]
+    iterations : [type], optional
+        [description], by default RRT_ITERATIONS
+    tree_frequency : int, optional
+        the frequency of adding tree nodes when extending. For example, if tree_freq=2, then a tree node is added every three nodes,
+        by default 1
+    max_time : [type], optional
+        [description], by default INF
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
+    import functools
+    from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision
+
+    start_time = time.time()
+    assert tree_frequency >= 1
+
+    # create a node for each configuration
+    tip_positions1 = calc_tippos_fn(q1)
+    ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1),
+                                                      sample_joint_conf_fn, tip_positions1, num_samples=1)
+
+    if len(ik_solutions1) == 0:
+        print('No valid IK solution for Initial configuration found')
+        return None, None
+
+    endpose_in_collision = True
+    for _ in range(10):
+        q2 = goal_sample_fn()
+        ik_sol_q2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1),
+                                                      sample_joint_conf_fn, tip_positions1, num_samples=1)
+        if len(ik_sol_q2) > 0:
+            endpose_in_collision = False
+            break
+    if endpose_in_collision:
+        print('No valid IK solution for end configuration found')
+        return None, None
+
+    ik_sol1 = ik_solutions1[0]
+
+    if not callable(goal_sample_fn):
+        g = goal_sample_fn
+        goal_sample_fn = lambda: g
+
+    nodes = [TreeNode(q1, ik_solution=ik_sol1)]
+    for iteration in irange(iterations):
+        if max_time <= elapsed_time(start_time):
+            break
+
+        goal = random() < goal_probability or iteration == 0
+        s = goal_sample_fn() if goal else sample_fn()
+        last, success = wholebody_extend_towards(nodes, s, distance_fn, extend_fn,
+                                                 collision_fn, calc_tippos_fn,
+                                                 sample_joint_conf_fn, ik,
+                                                 False, tree_frequency,
+                                                 goal_test)
+
+        if success:
+            path, joint_conf_path = last.retrace_all()
+            return configs(path), joint_conf_path
+    return None, None
+
 
 def wholebody_rrt_connect(q1, q2, init_joint_conf, end_joint_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
                           iterations=RRT_ITERATIONS, tree_frequency=1, max_time=INF):

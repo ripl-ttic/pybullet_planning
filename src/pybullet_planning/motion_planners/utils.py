@@ -96,7 +96,7 @@ def weighted_euler_rot_error(pose_diff):
     import numpy as np
     from scipy.spatial.transform import Rotation
     euler_rot_diff = pose_diff[3:]
-    error_rot = Rotation.from_euler('xyz', euler_rot_diff)
+    error_rot = Rotation.from_euler('zyx', euler_rot_diff)
     orientation_error = error_rot.magnitude()
 
     # scale both position and orientation error to be within [0, 1] for
