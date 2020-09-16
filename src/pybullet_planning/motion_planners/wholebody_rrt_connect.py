@@ -129,7 +129,7 @@ def wholebody_rrt_connect(q1, q2, init_joint_conf, end_joint_conf, distance_fn, 
              path2, joint_conf_path2 = last2.retrace_all()
              if swap:
                  path1, path2 = path2, path1
-                 joint_conf_path2 = joint_conf_path2
+                 joint_conf_path1, joint_conf_path2 = joint_conf_path2, joint_conf_path1
              entire_path = path1[:-1] + path2[::-1]
              return configs(entire_path), extract_ik_solutions(entire_path)
     return None, None
