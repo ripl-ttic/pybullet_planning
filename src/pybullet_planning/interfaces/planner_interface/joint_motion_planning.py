@@ -10,7 +10,7 @@ from pybullet_planning.interfaces.debug_utils import add_line
 from pybullet_planning.interfaces.robots.joint import get_custom_limits, get_joint_positions
 from pybullet_planning.interfaces.robots.collision import get_collision_fn, get_cube_tip_collision_fn
 
-from pybullet_planning.motion_planners import birrt, wholebody_birrt, lazy_prm
+from pybullet_planning.motion_planners import birrt, wholebody_best_effort_rrt, wholebody_best_effort_direct_path, wholebody_birrt, lazy_prm
 import pybullet as p
 
 #####################################
@@ -246,24 +246,39 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
 
 def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_conf, current_tip_pos, cube_tip_pos, ik, obstacles=[], attachments=[],
                           init_joint_conf=None, disabled_collisions=set(), weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
-                          vis_fn=None, **kwargs):
+                          vis_fn=None, best_effort=False, **kwargs):
     from pybullet_planning.interfaces.env_manager.pose_transformation import get_pose
-    from pybullet_planning.motion_planners.utils import weighted_pose_error
-
+    from pybullet_planning.motion_planners.utils import weighted_pose_error, position_error
     assert len(joints) == len(end_conf)
+
     sample_fn = get_sample_fn(cube_body, joints, custom_limits=custom_limits)
     sample_joint_conf_fn = get_sample_fn(finger_body, finger_joints, custom_limits={})
-    distance_fn = get_distance_fn(cube_body, joints, weights=weights, weight_fn=weighted_pose_error)
+    # distance_fn = get_distance_fn(cube_body, joints, weights=weights, weight_fn=weighted_pose_error)
+    distance_fn = get_distance_fn(cube_body, joints, weights=None, weight_fn=weighted_pose_error)
     extend_fn = get_extend_fn(cube_body, joints, resolutions=resolutions)
     collision_fn = get_cube_tip_collision_fn(cube_body, finger_body, finger_joints, obstacles=obstacles, attachments=attachments,
                                              disabled_collisions=disabled_collisions, diagnosis=diagnosis, vis_fn=vis_fn, max_distance=max_distance)
 
-     # obtain start configuration
+    # obtain start configuration
     start_pos, start_quat = get_pose(cube_body)
     start_ori = p.getEulerFromQuaternion(start_quat)
     start_conf = np.concatenate([start_pos, start_ori]).reshape(-1)
     calc_tippos_fn = get_calc_tippos_fn(current_tip_pos, cube_tip_pos, start_pos, start_quat)
-    return wholebody_birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, init_joint_conf=init_joint_conf, **kwargs)
+
+    if best_effort:
+        return wholebody_best_effort_direct_path(
+            start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
+            goal_sample_fn=sample_fn, reward_dist_fn=distance_fn, n_goal_samples=100,
+            init_joint_conf=init_joint_conf, **kwargs
+        )
+
+    else:
+        return wholebody_birrt(
+            start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn,
+            calc_tippos_fn, sample_joint_conf_fn, ik,
+            init_joint_conf=init_joint_conf, **kwargs
+        )
+
 
 def plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn, **kwargs):
     # TODO: cost metric based on total robot movement (encouraging greater distances possibly)

@@ -87,6 +87,11 @@ def weighted_position_error(pose_diff):
     return (xy_dist / range_xy_dist + z_dist / range_z_dist) / 2
 
 
+def position_error(pose_diff):
+    import numpy as np
+    return np.linalg.norm(pose_diff[:3])
+
+
 def weighted_euler_rot_error(pose_diff):
     import numpy as np
     from scipy.spatial.transform import Rotation
@@ -102,6 +107,16 @@ def weighted_euler_rot_error(pose_diff):
 
 
 def weighted_pose_error(pose_diff):
+    scaled_pos_error = weighted_position_error(pose_diff)
+    scaled_rot_error = weighted_euler_rot_error(pose_diff)
+    # scaled_error = (scaled_pos_error + scaled_rot_error) / 2
+
+    # This may require some tuning:
+    scaled_error = (scaled_pos_error + scaled_rot_error) / 2
+    return scaled_error
+
+
+def pose_competition_reward_error(pose_diff):
     scaled_pos_error = weighted_position_error(pose_diff)
     scaled_rot_error = weighted_euler_rot_error(pose_diff)
     # scaled_error = (scaled_pos_error + scaled_rot_error) / 2

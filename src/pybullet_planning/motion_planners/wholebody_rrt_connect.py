@@ -9,6 +9,8 @@ __all__ = [
     'wholebody_rrt_connect',
     'wholebody_birrt',
     'wholebody_direct_path',
+    'wholebody_best_effort_rrt',
+    'wholebody_best_effort_direct_path'
     ]
 
 def asymmetric_extend(q1, q2, extend_fn, backward=False):
@@ -18,10 +20,11 @@ def asymmetric_extend(q1, q2, extend_fn, backward=False):
         return reversed(list(extend_fn(q2, q1)))
     return extend_fn(q1, q2)
 
-def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, swap, tree_frequency):
+def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
+                             calc_tippos_fn, sample_joint_conf_fn, ik, swap, tree_frequency, goal_test_fn=None):
     import functools
     import numpy as np
-    from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision
+    from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision, sample_no_collision_ik
     last = argmin(lambda n: distance_fn(n.config, target), tree)
     extend = list(asymmetric_extend(last.config, target, extend_fn, swap))
     # safe = list(takewhile(negate(collision_fn), extend))
@@ -31,14 +34,21 @@ def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
     # while such solution exist, it keeps appending the cube_pose to 'safe'
     # once it reaches a point where no such solution exist, it exits the loop.
     ik_solutions = []
-    for cube_pose in extend:
+    for i, cube_pose in enumerate(extend):
         tip_positions = calc_tippos_fn(cube_pose)
         ik_sols = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, cube_pose),
-                                                    sample_joint_conf_fn, tip_positions, num_samples=3)
+                                                    sample_joint_conf_fn, tip_positions, num_samples=1)
+        # NOTE: this doesn't work but Idk why..
+        # ik_sols = sample_no_collision_ik(ik, functools.partial(collision_fn, cube_pose),
+        #                                             sample_joint_conf_fn, tip_positions, n_samples=20)
         if len(ik_sols) == 0:
             break
         ik_solutions.append(ik_sols)
         safe.append(cube_pose)
+
+        if goal_test_fn is not None and goal_test_fn(cube_pose):
+            success = True
+            extend = extend[:i + 1]
 
     # print('safe length', len(safe))  # DEBUG
 
@@ -62,7 +72,6 @@ def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
 
     success = len(extend) == len(safe)
     return last, success
-
 
 def wholebody_rrt_connect(q1, q2, init_joint_conf, end_joint_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
                           iterations=RRT_ITERATIONS, tree_frequency=1, max_time=INF):
@@ -135,7 +144,7 @@ def wholebody_rrt_connect(q1, q2, init_joint_conf, end_joint_conf, distance_fn, 
     return None, None
 
 
-def wholebody_direct_path(q1, q2, init_joint_conf, end_joint_conf, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik):
+def wholebody_direct_path(q1, q2, init_joint_conf, end_joint_conf, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, **kwargs):
     import functools
     from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision
     # TEMP
@@ -143,13 +152,14 @@ def wholebody_direct_path(q1, q2, init_joint_conf, end_joint_conf, extend_fn, co
     #     return None
     path = [q1]
     joint_conf_path = [init_joint_conf]
+
     for q in extend_fn(q1, q2):
         tip_positions = calc_tippos_fn(q)
         if (q == q2).all():
             ik_solutions = [end_joint_conf]
         else:
             ik_solutions = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q, diagnosis=False),
-                                                            sample_joint_conf_fn, tip_positions, num_samples=3)
+                                                            sample_joint_conf_fn, tip_positions, num_samples=1)
         if len(ik_solutions) == 0:
             return None, None
         else:
@@ -191,7 +201,7 @@ def wholebody_birrt(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, cal
     ik_sol2 = ik_solutions2[0]
 
     start_time = time.time()
-    path, joint_conf_path = wholebody_direct_path(q1, q2, ik_sol1, ik_sol2, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik)
+    path, joint_conf_path = wholebody_direct_path(q1, q2, ik_sol1, ik_sol2, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, **kwargs)
     if path is not None:
         return path, joint_conf_path
 
@@ -205,3 +215,122 @@ def wholebody_birrt(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, cal
                 return path, joint_conf_path
             return wholebody_smooth_path(path, joint_conf_path, extend_fn, collision_fn, ik, calc_tippos_fn, sample_joint_conf_fn, iterations=smooth)
     return None, None
+
+
+def wholebody_best_effort_rrt(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
+                  goal_sample_fn=None, reward_dist_fn=None, n_goal_samples=100,
+                  init_joint_conf=None, restarts=RRT_RESTARTS, smooth=RRT_SMOOTHING, iterations=RRT_ITERATIONS, max_time=INF, **kwargs):
+    import functools
+    import numpy as np
+    from random import random
+    from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision
+
+    if goal_sample_fn is None:
+        goal_sample_fn = sample_fn
+
+    # collision and IK check on initial and end configuration
+    tip_positions1 = calc_tippos_fn(q1)
+    if init_joint_conf is None:
+        ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1, diagnosis=False),
+                                                          sample_joint_conf_fn, tip_positions1, num_samples=3)
+    else:
+        ik_solutions1 = [] if collision_fn(q1, init_joint_conf) else [init_joint_conf]
+
+    if len(ik_solutions1) == 0:
+        print('Initial Configuration in collision')
+        return None, None
+    ik_sol1 = ik_solutions1[0]
+
+    # Check if q2 is feasible
+    tip_positions2 = calc_tippos_fn(q2)
+    ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
+                                                      sample_joint_conf_fn, tip_positions2, num_samples=3)
+
+    # q2 is feasible! we just run wholebody_birrt.
+    if len(ik_solutions2) > 0:
+        return wholebody_birrt(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
+                               init_joint_conf=init_joint_conf, restarts=restarts, smooth=smooth, max_time=max_time, **kwargs)
+
+    # sample from goal_sample_fn() and check if the pose is feasible
+    candidates = sample_feasible_goals(goal_sample_fn, ik, collision_fn, sample_joint_conf_fn, calc_tippos_fn, n_goal_samples=100)
+
+    # search for the end pose that will have the highest reward
+    new_goal, goal_joint_conf = argmin(lambda cand: reward_dist_fn(cand[0], q2), candidates)
+    new_goal = np.asarray(new_goal)
+
+    return wholebody_birrt(q1, new_goal, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
+                           init_joint_conf=init_joint_conf, restarts=restarts, smooth=smooth, max_time=max_time, **kwargs)
+
+
+
+def wholebody_best_effort_direct_path(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
+                                      goal_sample_fn=None, reward_dist_fn=None, n_goal_samples=100, n_trials=10,
+                                      init_joint_conf=None, restarts=RRT_RESTARTS, smooth=RRT_SMOOTHING, iterations=RRT_ITERATIONS, max_time=INF, **kwargs):
+    import functools
+    import numpy as np
+    from random import random
+    from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision
+
+    if goal_sample_fn is None:
+        goal_sample_fn = sample_fn
+
+    # collision and IK check on initial and end configuration
+    tip_positions1 = calc_tippos_fn(q1)
+    if init_joint_conf is None:
+        ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1, diagnosis=False),
+                                                          sample_joint_conf_fn, tip_positions1, num_samples=3)
+    else:
+        ik_solutions1 = [] if collision_fn(q1, init_joint_conf) else [init_joint_conf]
+
+    if len(ik_solutions1) == 0:
+        print('Initial Configuration in collision')
+        return None, None
+    ik_sol1 = ik_solutions1[0]
+
+    # Check if q2 is feasible
+    tip_positions2 = calc_tippos_fn(q2)
+    ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
+                                                      sample_joint_conf_fn, tip_positions2, num_samples=3)
+
+    # q2 is feasible! we just run wholebody_birrt.
+    if len(ik_solutions2) > 0:
+        return wholebody_birrt(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
+                               init_joint_conf=init_joint_conf, restarts=restarts, smooth=smooth, max_time=max_time, **kwargs)
+
+    # sample from goal_sample_fn() and check if the pose is feasible
+    for j in range(n_trials):
+        candidates = sample_feasible_goals(goal_sample_fn, ik, collision_fn, sample_joint_conf_fn, calc_tippos_fn)
+
+        # search for the end pose that will have the highest reward
+        new_goal, goal_joint_conf = argmin(lambda cand: reward_dist_fn(cand[0], q2), candidates)
+        new_goal = np.asarray(new_goal)
+
+        # Obtain the end pose
+        tip_positions2 = calc_tippos_fn(new_goal)
+        ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, new_goal, diagnosis=False),
+                                                          sample_joint_conf_fn, tip_positions2, num_samples=3)
+        ik_sol2 = ik_solutions2[0]
+        path, joint_conf_path = wholebody_direct_path(q1, new_goal, ik_sol1, ik_sol2, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, **kwargs)
+
+        if path is None:
+            print('Direct path is not found. Sampling another goal...')
+            continue
+
+        return path, joint_conf_path
+
+
+def sample_feasible_goals(goal_sample_fn, ik, collision_fn, sample_joint_conf_fn, calc_tippos_fn, n_goal_samples=100):
+    import functools
+    from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision
+    candidates = []
+    for i in range(n_goal_samples):
+        sampled_goal = goal_sample_fn()
+        tip_positions = calc_tippos_fn(sampled_goal)
+        ik_solutions = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, sampled_goal, diagnosis=False),
+                                                        sample_joint_conf_fn, tip_positions, num_samples=3)
+        if len(ik_solutions) > 0:
+            candidates.append((sampled_goal, ik_solutions[0]))
+
+    if len(candidates) == 0:
+        raise ValueError('No feasible goal is sampled.')
+    return candidates

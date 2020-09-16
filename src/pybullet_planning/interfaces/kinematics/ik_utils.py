@@ -179,3 +179,13 @@ def sample_ik_solution(ik, sample_fn, target_tip_positions, max_trials=5):
         return np.concatenate(ik_solution)
     else:
         return None
+
+
+def sample_no_collision_ik(ik, joint_collision_fn, sample_fn, target_tip_positions, n_samples=3):
+    ik_solution = sample_ik_solution(ik, sample_fn, target_tip_positions)
+    if ik_solution is None:
+        return None
+    ik_solutions = [ik_solution]
+    ik_solutions += [sample_ik_solution(ik, sample_fn, target_tip_positions) for _ in range(n_samples)]
+    ik_solutions = [ik_sol for ik_sol in ik_solutions if joint_collision_fn(ik_sol)]
+    return ik_solutions
