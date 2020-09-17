@@ -215,6 +215,15 @@ def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
         print('path is found with goal_threshold:', goal_threshold)
         prev_goal_threshold = goal_threshold
         prev_path, prev_joint_path = path, joint_path
+
+    # NOTE: Very rare, but there's a case that does not have a direct path but can achieve zero error!
+    if path is not None:
+        print('** [done] path is found with goal_threshold:', prev_goal_threshold)
+        return wholebody_smooth_path(prev_path, prev_joint_path, extend_fn,
+                                    collision_fn, ik, calc_tippos_fn,
+                                    sample_joint_conf_fn,
+                                        iterations=smoothing)
+
     return None, None
 
 
