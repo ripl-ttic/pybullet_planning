@@ -137,7 +137,6 @@ def wholebody_rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
                                 calc_tippos_fn, sample_joint_conf_fn, ik,
                                 goal_probability, iterations, tree_frequency,
                                 max_time=max_time - elapsed_time)
-        print('_rrt restarting...')
         if path is not None:
             if smoothing is None:
                 return path, joint_path
@@ -157,13 +156,13 @@ def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
 
     # additional params:
     end_conf = q2
-    print('-------------------------------')
-    print('max_goal_threshold', max_goal_threshold)
-    print('min_goal_threshold', min_goal_threshold)
-    print('goal_probability', goal_probability)
-    print('restarts', restarts)
-    print('rrt_iterations', iterations)
-    print('-------------------------------')
+    # print('-------------------------------')
+    # print('max_goal_threshold', max_goal_threshold)
+    # print('min_goal_threshold', min_goal_threshold)
+    # print('goal_probability', goal_probability)
+    # print('restarts', restarts)
+    # print('rrt_iterations', iterations)
+    # print('-------------------------------')
 
     def get_goal_test_fn(end_conf, goal_threshold):
         def goal_test_fn(q):
@@ -193,7 +192,7 @@ def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
         goal_threshold = ((1 - i / n_goal_sets)
                           * (max_goal_threshold - min_goal_threshold)
                           + min_goal_threshold)
-        print('trying goal threshold', goal_threshold)
+        # print('trying goal threshold', goal_threshold)
         goal_test = get_goal_test_fn(end_conf, goal_threshold)
         goal_sample_fn = get_goal_sample_fn(goal_test, end_conf, goal_threshold, use_ori)
 
@@ -212,9 +211,9 @@ def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
                                             sample_joint_conf_fn,
                                             iterations=smoothing)
 
-        print('path is found with goal_threshold:', goal_threshold)
-        print('len(preserved_tree)', len(preserved_tree))
-        print('goal_threshold', goal_threshold)
+        # print('path is found with goal_threshold:', goal_threshold)
+        # print('len(preserved_tree)', len(preserved_tree))
+        # print('goal_threshold', goal_threshold)
         prev_goal_threshold = goal_threshold
         prev_path, prev_joint_path = path, joint_path
     return None, None
@@ -292,7 +291,7 @@ def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
         nodes = preserved_tree
     else:
         nodes = [TreeNode(q1, ik_solution=ik_sol1)]
-    print('iterations', iterations)
+    # print('iterations', iterations)
     for iteration in irange(iterations):
         if max_time <= elapsed_time(start_time):
             break
@@ -305,7 +304,7 @@ def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
                                                  False, tree_frequency,
                                                  goal_test)
 
-        print('sequence length:', len(last.retrace()))
+        # print('sequence length:', len(last.retrace()))
         if success:
             path, joint_conf_path = last.retrace_all()
             return configs(path), joint_conf_path, nodes
@@ -397,14 +396,14 @@ def __wholebody_direct_path(q1, q2, extend_fn, collision_fn, calc_tippos_fn, sam
     ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1, diagnosis=False),
                                                       sample_joint_conf_fn, tip_positions1, num_samples=1)
     if len(ik_solutions1) == 0:
-        print('Initial Configuration in collision')
+        # print('Initial Configuration in collision')
         return None, None
 
     tip_positions2 = calc_tippos_fn(q2)
     ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
                                                       sample_joint_conf_fn, tip_positions2, num_samples=3)
     if len(ik_solutions2) == 0:
-        print('End Configuration in collision')
+        # print('End Configuration in collision')
         return None, None
 
     ik_sol1 = ik_solutions1[0]

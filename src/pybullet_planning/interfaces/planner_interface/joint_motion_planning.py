@@ -246,7 +246,7 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
 
 def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_conf, current_tip_pos, cube_tip_pos, ik, obstacles=[], attachments=[],
                           init_joint_conf=None, disabled_collisions=set(), weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
-                          vis_fn=None, best_effort=False, use_rrt=False, use_incremental_rrt=False, use_ori=False, goal_threshold=0.1, **kwargs):
+                          vis_fn=None, use_rrt=False, use_incremental_rrt=False, use_ori=False, goal_threshold=0.1, **kwargs):
     from pybullet_planning.interfaces.env_manager.pose_transformation import get_pose
     from pybullet_planning.motion_planners.utils import weighted_pose_error, weighted_position_error
     assert len(joints) == len(end_conf)
@@ -265,13 +265,6 @@ def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_con
     start_conf = np.concatenate([start_pos, start_ori]).reshape(-1)
     calc_tippos_fn = get_calc_tippos_fn(current_tip_pos, cube_tip_pos, start_pos, start_quat)
 
-    # if best_effort:
-    #     return wholebody_best_effort_direct_path(
-    #         start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
-    #         goal_sample_fn=sample_fn, reward_dist_fn=distance_fn, n_goal_samples=100,
-    #         init_joint_conf=init_joint_conf, **kwargs
-    #     )
-
     if use_rrt:
         def goal_test(q):
             d = distance_fn(end_conf, q)
@@ -285,7 +278,6 @@ def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_con
                              sample_fn, extend_fn, collision_fn, calc_tippos_fn,
                              sample_joint_conf_fn, ik, **kwargs)
     elif use_incremental_rrt:
-        # NOTE: recommended to set a larger value on iterations for this.
         from pybullet_planning.motion_planners.wholebody_rrt_connect import rrt_goal_sample
         return wholebody_incremental_rrt(start_conf, end_conf, use_ori, distance_fn,
                                          sample_fn, extend_fn, collision_fn, calc_tippos_fn,
