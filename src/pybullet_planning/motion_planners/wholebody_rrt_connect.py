@@ -263,7 +263,7 @@ def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
     tip_positions1 = calc_tippos_fn(q1)
     # NOTE: very rare, but num_samples=1 fails to get a solution, and that is critical for initial configuration.
     ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1),
-                                                      sample_joint_conf_fn, tip_positions1, num_samples=3)
+                                                      sample_joint_conf_fn, tip_positions1, num_samples=1)
 
     if len(ik_solutions1) == 0:
         print('No valid IK solution for Initial configuration found')
@@ -351,11 +351,11 @@ def wholebody_rrt_connect(q1, q2, init_joint_conf, end_joint_conf, distance_fn, 
     # create a node for each configuration
     tip_positions1 = calc_tippos_fn(q1)
     # ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1),
-    #                                                   sample_joint_conf_fn, tip_positions1, num_samples=3)
+    #                                                   sample_joint_conf_fn, tip_positions1, num_samples=1)
 
     tip_positions2 = calc_tippos_fn(q2)
     # ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2),
-    #                                                   sample_joint_conf_fn, tip_positions2, num_samples=3)
+    #                                                   sample_joint_conf_fn, tip_positions2, num_samples=1)
 
     nodes1, nodes2 = [TreeNode(q1, ik_solution=init_joint_conf)], [TreeNode(q2, ik_solution=end_joint_conf)]
     for iteration in irange(iterations):
@@ -401,7 +401,7 @@ def __wholebody_direct_path(q1, q2, extend_fn, collision_fn, calc_tippos_fn, sam
 
     tip_positions2 = calc_tippos_fn(q2)
     ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
-                                                      sample_joint_conf_fn, tip_positions2, num_samples=3)
+                                                      sample_joint_conf_fn, tip_positions2, num_samples=1)
     if len(ik_solutions2) == 0:
         # print('End Configuration in collision')
         return None, None
@@ -461,7 +461,7 @@ def wholebody_birrt(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, cal
     tip_positions1 = calc_tippos_fn(q1)
     if init_joint_conf is None:
         ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1, diagnosis=False),
-                                                        sample_joint_conf_fn, tip_positions1, num_samples=3)
+                                                        sample_joint_conf_fn, tip_positions1, num_samples=1)
     else:
         ik_solutions1 = [] if collision_fn(q1, init_joint_conf) else [init_joint_conf]
 
@@ -471,7 +471,7 @@ def wholebody_birrt(q1, q2, distance_fn, sample_fn, extend_fn, collision_fn, cal
 
     tip_positions2 = calc_tippos_fn(q2)
     ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
-                                                      sample_joint_conf_fn, tip_positions2, num_samples=3)
+                                                      sample_joint_conf_fn, tip_positions2, num_samples=1)
     if len(ik_solutions2) == 0:
         print('End Configuration in collision')
         return None, None
@@ -511,7 +511,7 @@ def wholebody_best_effort_rrt(q1, q2, distance_fn, sample_fn, extend_fn, collisi
     tip_positions1 = calc_tippos_fn(q1)
     if init_joint_conf is None:
         ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1, diagnosis=False),
-                                                          sample_joint_conf_fn, tip_positions1, num_samples=3)
+                                                          sample_joint_conf_fn, tip_positions1, num_samples=1)
     else:
         ik_solutions1 = [] if collision_fn(q1, init_joint_conf) else [init_joint_conf]
 
@@ -523,7 +523,7 @@ def wholebody_best_effort_rrt(q1, q2, distance_fn, sample_fn, extend_fn, collisi
     # Check if q2 is feasible
     tip_positions2 = calc_tippos_fn(q2)
     ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
-                                                      sample_joint_conf_fn, tip_positions2, num_samples=3)
+                                                      sample_joint_conf_fn, tip_positions2, num_samples=1)
 
     # q2 is feasible! we just run wholebody_birrt.
     if len(ik_solutions2) > 0:
@@ -557,7 +557,7 @@ def wholebody_best_effort_direct_path(q1, q2, distance_fn, sample_fn, extend_fn,
     tip_positions1 = calc_tippos_fn(q1)
     if init_joint_conf is None:
         ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1, diagnosis=False),
-                                                          sample_joint_conf_fn, tip_positions1, num_samples=3)
+                                                          sample_joint_conf_fn, tip_positions1, num_samples=1)
     else:
         ik_solutions1 = [] if collision_fn(q1, init_joint_conf) else [init_joint_conf]
 
@@ -569,7 +569,7 @@ def wholebody_best_effort_direct_path(q1, q2, distance_fn, sample_fn, extend_fn,
     # Check if q2 is feasible
     tip_positions2 = calc_tippos_fn(q2)
     ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
-                                                      sample_joint_conf_fn, tip_positions2, num_samples=3)
+                                                      sample_joint_conf_fn, tip_positions2, num_samples=1)
 
     # q2 is feasible! we just run wholebody_birrt.
     if len(ik_solutions2) > 0:
@@ -587,7 +587,7 @@ def wholebody_best_effort_direct_path(q1, q2, distance_fn, sample_fn, extend_fn,
         # Obtain the end pose
         tip_positions2 = calc_tippos_fn(new_goal)
         ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, new_goal, diagnosis=False),
-                                                          sample_joint_conf_fn, tip_positions2, num_samples=3)
+                                                          sample_joint_conf_fn, tip_positions2, num_samples=1)
         ik_sol2 = ik_solutions2[0]
         path, joint_conf_path = wholebody_direct_path(q1, new_goal, ik_sol1, ik_sol2, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, **kwargs)
 
@@ -606,7 +606,7 @@ def sample_feasible_goals(goal_sample_fn, ik, collision_fn, sample_joint_conf_fn
         sampled_goal = goal_sample_fn()
         tip_positions = calc_tippos_fn(sampled_goal)
         ik_solutions = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, sampled_goal, diagnosis=False),
-                                                        sample_joint_conf_fn, tip_positions, num_samples=3)
+                                                        sample_joint_conf_fn, tip_positions, num_samples=1)
         if len(ik_solutions) > 0:
             candidates.append((sampled_goal, ik_solutions[0]))
 
