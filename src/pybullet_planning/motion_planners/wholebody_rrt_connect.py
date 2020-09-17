@@ -4,7 +4,7 @@ from random import random
 from itertools import takewhile
 from .smoothing import wholebody_smooth_path
 from .rrt import TreeNode, configs, extract_ik_solutions
-from .utils import irange, argmin, RRT_ITERATIONS, RRT_RESTARTS, RRT_SMOOTHING, INF, elapsed_time, negate
+from .utils import irange, argmin, INCR_RRT_ITERATIONS, RRT_ITERATIONS, RRT_RESTARTS, RRT_SMOOTHING, INF, elapsed_time, negate
 
 __all__ = [
     'wholebody_rrt_connect',
@@ -12,7 +12,8 @@ __all__ = [
     'wholebody_direct_path',
     'wholebody_best_effort_rrt',
     'wholebody_best_effort_direct_path',
-    'wholebody_rrt'
+    'wholebody_rrt',
+    'wholebody_incremental_rrt'
     ]
 
 
@@ -31,6 +32,7 @@ def wholebody_extend_towards(tree, target, distance_fn, extend_fn, collision_fn,
     import numpy as np
     from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision, sample_no_collision_ik
     last = argmin(lambda n: distance_fn(n.config, target), tree)
+    # print('selected last:', str(last)[:40])
     extend = list(asymmetric_extend(last.config, target, extend_fn, swap))
     # safe = list(takewhile(negate(collision_fn), extend))
     safe = []
@@ -130,11 +132,12 @@ def wholebody_rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
         elapsed_time = time.time() - start_time
         if elapsed_time >= max_time:
             return None, None
-        path, joint_path = _rrt(q1, goal_sample_fn, goal_test, distance_fn,
+        path, joint_path, _ = _rrt(q1, goal_sample_fn, goal_test, distance_fn,
                                 sample_fn, extend_fn, collision_fn,
                                 calc_tippos_fn, sample_joint_conf_fn, ik,
                                 goal_probability, iterations, tree_frequency,
                                 max_time=max_time - elapsed_time)
+        print('_rrt restarting...')
         if path is not None:
             if smoothing is None:
                 return path, joint_path
@@ -145,10 +148,83 @@ def wholebody_rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
     return None, None
 
 
+def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
+                              extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn,
+                              ik, goal_probability=0.33, min_goal_threshold=0.0, max_goal_threshold=0.6,
+                              iterations=INCR_RRT_ITERATIONS, tree_frequency=1, max_time=INF, restarts=RRT_RESTARTS,
+                              n_goal_sets=20,
+                              smoothing=RRT_SMOOTHING):
+
+    # additional params:
+    end_conf = q2
+    print('-------------------------------')
+    print('max_goal_threshold', max_goal_threshold)
+    print('min_goal_threshold', min_goal_threshold)
+    print('goal_probability', goal_probability)
+    print('restarts', restarts)
+    print('rrt_iterations', iterations)
+    print('-------------------------------')
+
+    def get_goal_test_fn(end_conf, goal_threshold):
+        def goal_test_fn(q):
+            d = distance_fn(end_conf, q)
+            return d <= goal_threshold
+        return goal_test_fn
+
+    def get_goal_sample_fn(goal_test, end_conf, goal_threshold, use_ori):
+        def goal_sample_fn():
+            sample = rrt_goal_sample(goal_test, end_conf, goal_threshold, use_ori)
+            return sample
+        return goal_sample_fn
+
+    start_time = time.time()
+
+    # check if there's a direct path
+    path, joint_path = __wholebody_direct_path(q1, q2, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik)
+    if path is not None:
+        return path, joint_path
+
+    preserved_tree = []
+    prev_goal_threshold = max_goal_threshold
+    for i in range(n_goal_sets):
+        elapsed_time = time.time() - start_time
+        if elapsed_time >= max_time:
+            return None, None
+        goal_threshold = ((1 - i / n_goal_sets)
+                          * (max_goal_threshold - min_goal_threshold)
+                          + min_goal_threshold)
+        print('trying goal threshold', goal_threshold)
+        goal_test = get_goal_test_fn(end_conf, goal_threshold)
+        goal_sample_fn = get_goal_sample_fn(goal_test, end_conf, goal_threshold, use_ori)
+
+        path, joint_path, preserved_tree = _rrt(q1, goal_sample_fn, goal_test, distance_fn,
+                                                sample_fn, extend_fn, collision_fn,
+                                                calc_tippos_fn, sample_joint_conf_fn, ik,
+                                                goal_probability, iterations, tree_frequency,
+                                                max_time=max_time - elapsed_time, preserved_tree=preserved_tree)
+        if path is None:
+            if i == 0:
+                break
+            else:
+                print('** path is found with minimum goal_threshold:', goal_threshold)
+                return wholebody_smooth_path(prev_path, prev_joint_path, extend_fn,
+                                            collision_fn, ik, calc_tippos_fn,
+                                            sample_joint_conf_fn,
+                                            iterations=smoothing)
+
+        print('path is found with goal_threshold:', goal_threshold)
+        print('len(preserved_tree)', len(preserved_tree))
+        print('goal_threshold', goal_threshold)
+        prev_goal_threshold = goal_threshold
+        prev_path, prev_joint_path = path, joint_path
+    return None, None
+
+
 def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
          extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn,
-         ik, goal_probability=0.2, iterations=RRT_ITERATIONS,
-         tree_frequency=1, max_time=INF):
+         ik, goal_probability=0.2,
+         iterations=RRT_ITERATIONS, tree_frequency=1, max_time=INF,
+         preserved_tree=[]):
     """[summary]
 
     Parameters
@@ -186,12 +262,13 @@ def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
 
     # create a node for each configuration
     tip_positions1 = calc_tippos_fn(q1)
+    # NOTE: very rare, but num_samples=1 fails to get a solution, and that is critical for initial configuration.
     ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1),
-                                                      sample_joint_conf_fn, tip_positions1, num_samples=1)
+                                                      sample_joint_conf_fn, tip_positions1, num_samples=3)
 
     if len(ik_solutions1) == 0:
         print('No valid IK solution for Initial configuration found')
-        return None, None
+        return None, None, None
 
     endpose_in_collision = True
     for _ in range(10):
@@ -203,7 +280,7 @@ def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
             break
     if endpose_in_collision:
         print('No valid IK solution for end configuration found')
-        return None, None
+        return None, None, None
 
     ik_sol1 = ik_solutions1[0]
 
@@ -211,7 +288,11 @@ def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
         g = goal_sample_fn
         goal_sample_fn = lambda: g
 
-    nodes = [TreeNode(q1, ik_solution=ik_sol1)]
+    if len(preserved_tree) > 0:
+        nodes = preserved_tree
+    else:
+        nodes = [TreeNode(q1, ik_solution=ik_sol1)]
+    print('iterations', iterations)
     for iteration in irange(iterations):
         if max_time <= elapsed_time(start_time):
             break
@@ -224,10 +305,11 @@ def _rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
                                                  False, tree_frequency,
                                                  goal_test)
 
+        print('sequence length:', len(last.retrace()))
         if success:
             path, joint_conf_path = last.retrace_all()
-            return configs(path), joint_conf_path
-    return None, None
+            return configs(path), joint_conf_path, nodes
+    return None, None, None
 
 
 def wholebody_rrt_connect(q1, q2, init_joint_conf, end_joint_conf, distance_fn, sample_fn, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik,
@@ -299,6 +381,47 @@ def wholebody_rrt_connect(q1, q2, init_joint_conf, end_joint_conf, distance_fn, 
              entire_path = path1[:-1] + path2[::-1]
              return configs(entire_path), extract_ik_solutions(entire_path)
     return None, None
+
+def __wholebody_direct_path(q1, q2, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik):
+    """
+    I know it's confusing to have 2 functions both named wholebody_direct_path...
+    The difference is very tiny:
+    This one simply calculates joint configurations for q1 and q2,
+    and the other one doesn't but expects init_joint_conf and end_joint_conf as its input.
+    """
+    import functools
+    from pybullet_planning.interfaces.kinematics.ik_utils import sample_multiple_ik_with_collision
+
+    # collision and IK check on initial and end configuration
+    tip_positions1 = calc_tippos_fn(q1)
+    ik_solutions1 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q1, diagnosis=False),
+                                                      sample_joint_conf_fn, tip_positions1, num_samples=1)
+    if len(ik_solutions1) == 0:
+        print('Initial Configuration in collision')
+        return None, None
+
+    tip_positions2 = calc_tippos_fn(q2)
+    ik_solutions2 = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q2, diagnosis=False),
+                                                      sample_joint_conf_fn, tip_positions2, num_samples=3)
+    if len(ik_solutions2) == 0:
+        print('End Configuration in collision')
+        return None, None
+
+    ik_sol1 = ik_solutions1[0]
+    ik_sol2 = ik_solutions2[0]
+
+    path, joint_conf_path = [], []
+    for q in extend_fn(q1, q2):
+        tip_positions = calc_tippos_fn(q)
+        ik_solutions = sample_multiple_ik_with_collision(ik, functools.partial(collision_fn, q, diagnosis=False),
+                                                         sample_joint_conf_fn, tip_positions, num_samples=1)
+        if len(ik_solutions) == 0:  # or collision_fn(q, joint_conf=ik_solutions[0]):
+            return None, None
+
+        path.append(q)
+        joint_conf_path.append(ik_solutions[0])
+    print('DIRECT PATH is found!!')
+    return path, joint_conf_path
 
 
 def wholebody_direct_path(q1, q2, init_joint_conf, end_joint_conf, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik, **kwargs):

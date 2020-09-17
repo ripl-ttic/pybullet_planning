@@ -8,6 +8,9 @@ RRT_ITERATIONS = 20
 RRT_RESTARTS = 2
 RRT_SMOOTHING = 20
 
+# INCR_RRT_RESTARTS = 10
+INCR_RRT_ITERATIONS = 20
+
 
 def irange(start, stop=None, step=1):  # np.arange
     if stop is None:
