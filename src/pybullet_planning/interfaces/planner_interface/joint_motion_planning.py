@@ -80,6 +80,13 @@ def get_distance_fn(body, joints, weights=None, weight_fn=None): #, norm=2):
         #return np.linalg.norm(np.multiply(weights * diff), ord=norm)
     return fn
 
+def get_paired_distance_fn(body, joints, weight_fn):
+    '''This calls weighted_pose calc function with 2 inputs'''
+    from pybullet_planning.motion_planners.utils import weighted_paired_pose_error
+    def fn(q1, q2):
+        return weight_fn(q1, q2)
+    return fn
+
 def get_refine_fn(body, joints, num_steps=0):
     difference_fn = get_difference_fn(body, joints)
     num_steps = num_steps + 1
@@ -248,13 +255,17 @@ def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_con
                           init_joint_conf=None, disabled_collisions=set(), weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
                           vis_fn=None, use_rrt=False, use_incremental_rrt=False, use_ori=False, goal_threshold=0.1, **kwargs):
     from pybullet_planning.interfaces.env_manager.pose_transformation import get_pose
-    from pybullet_planning.motion_planners.utils import weighted_pose_error, weighted_position_error
+    from pybullet_planning.motion_planners.utils import weighted_pose_error, weighted_position_error, weighted_paired_pose_error
     assert len(joints) == len(end_conf)
 
     sample_fn = get_sample_fn(cube_body, joints, custom_limits=custom_limits)
     sample_joint_conf_fn = get_sample_fn(finger_body, finger_joints, custom_limits={})
-    weight_fn = weighted_pose_error if use_ori else weighted_position_error
-    distance_fn = get_distance_fn(cube_body, joints, weights=None, weight_fn=weight_fn)
+    if use_ori:
+        weight_fn = weighted_paired_pose_error
+        distance_fn = get_paired_distance_fn(cube_body, joints, weight_fn=weight_fn)
+    else:
+        weight_fn = weighted_position_error
+        distance_fn = get_distance_fn(cube_body, joints, weights=None, weight_fn=weight_fn)
     extend_fn = get_extend_fn(cube_body, joints, resolutions=resolutions)
     collision_fn = get_cube_tip_collision_fn(cube_body, finger_body, finger_joints, obstacles=obstacles, attachments=attachments,
                                              disabled_collisions=disabled_collisions, diagnosis=diagnosis, vis_fn=vis_fn, max_distance=max_distance)

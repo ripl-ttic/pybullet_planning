@@ -149,11 +149,10 @@ def wholebody_rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
 
 def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
                               extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn,
-                              ik, goal_probability=0.33, min_goal_threshold=0.0, max_goal_threshold=0.6,
+                              ik, goal_probability=0.66, min_goal_threshold=0.0, max_goal_threshold=0.6,
                               iterations=INCR_RRT_ITERATIONS, tree_frequency=1, max_time=INF, restarts=RRT_RESTARTS,
                               n_goal_sets=20,
-                              smoothing=RRT_SMOOTHING):
-
+                              smoothing=RRT_SMOOTHING, **kwargs):
     # additional params:
     end_conf = q2
     # print('-------------------------------')
@@ -170,7 +169,7 @@ def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
             return d <= goal_threshold
         return goal_test_fn
 
-    def get_goal_sample_fn(goal_test, end_conf, goal_threshold, use_ori):
+    def get_goal_sample_fn(goal_test, end_conf, use_ori, goal_threshold):
         def goal_sample_fn():
             sample = rrt_goal_sample(goal_test, end_conf, goal_threshold, use_ori)
             return sample
@@ -192,28 +191,28 @@ def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
         goal_threshold = ((1 - i / n_goal_sets)
                           * (max_goal_threshold - min_goal_threshold)
                           + min_goal_threshold)
-        # print('trying goal threshold', goal_threshold)
+        print('trying goal threshold', goal_threshold)
         goal_test = get_goal_test_fn(end_conf, goal_threshold)
-        goal_sample_fn = get_goal_sample_fn(goal_test, end_conf, goal_threshold, use_ori)
+        goal_sample_fn = get_goal_sample_fn(goal_test, end_conf, use_ori, goal_threshold)
 
-        path, joint_path, preserved_tree = _rrt(q1, goal_sample_fn, goal_test, distance_fn,
+        path, joint_path, preserved_tree = _rrt(q1, goal_sample_fn,
+                                                goal_test,
+                                                distance_fn,
                                                 sample_fn, extend_fn, collision_fn,
                                                 calc_tippos_fn, sample_joint_conf_fn, ik,
                                                 goal_probability, iterations, tree_frequency,
-                                                max_time=max_time - elapsed_time, preserved_tree=preserved_tree)
+                                                max_time=max_time - elapsed_time, preserved_tree=preserved_tree, **kwargs)
         if path is None:
             if i == 0:
                 break
             else:
-                print('** path is found with minimum goal_threshold:', goal_threshold)
+                print('** [done] path is found with goal_threshold:', prev_goal_threshold)
                 return wholebody_smooth_path(prev_path, prev_joint_path, extend_fn,
                                             collision_fn, ik, calc_tippos_fn,
                                             sample_joint_conf_fn,
-                                            iterations=smoothing)
+                                             iterations=smoothing)
 
-        # print('path is found with goal_threshold:', goal_threshold)
-        # print('len(preserved_tree)', len(preserved_tree))
-        # print('goal_threshold', goal_threshold)
+        print('path is found with goal_threshold:', goal_threshold)
         prev_goal_threshold = goal_threshold
         prev_path, prev_joint_path = path, joint_path
     return None, None
