@@ -86,10 +86,18 @@ def get_joint_velocities(body, joints):
 def set_joint_position(body, joint, value):
     p.resetJointState(body, joint, value, targetVelocity=0, physicsClientId=CLIENT)
 
+def set_joint_position_and_velocity(body, joint, pos, vel):
+    p.resetJointState(body, joint, pos, targetVelocity=vel, physicsClientId=CLIENT)
+
 def set_joint_positions(body, joints, values):
     assert len(joints) == len(values)
     for joint, value in zip(joints, values):
         set_joint_position(body, joint, value)
+
+def set_joint_positions_and_velocities(body, joints, positions, velocities):
+    assert len(joints) == len(positions) == len(velocities)
+    for joint, pos, vel in zip(joints, positions, velocities):
+        set_joint_position_and_velocity(body, joint, pos, vel)
 
 def get_configuration(body):
     return get_joint_positions(body, get_movable_joints(body))

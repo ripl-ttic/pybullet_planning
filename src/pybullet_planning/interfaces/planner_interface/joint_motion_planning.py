@@ -11,6 +11,7 @@ from pybullet_planning.interfaces.robots.joint import get_custom_limits, get_joi
 from pybullet_planning.interfaces.robots.collision import get_collision_fn, get_cube_tip_collision_fn
 
 from pybullet_planning.motion_planners import birrt, wholebody_rrt, wholebody_incremental_rrt, wholebody_best_effort_direct_path, wholebody_birrt, lazy_prm
+from pybullet_planning.interfaces.planner_interface.utils import preserve_pos_and_vel, preserve_pos_and_vel_wholebody
 import pybullet as p
 
 #####################################
@@ -223,6 +224,8 @@ def check_initial_end(start_conf, end_conf, collision_fn, diagnosis=False):
         return False
     return True
 
+
+@preserve_pos_and_vel
 def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
                       self_collisions=True, disabled_collisions=set(), extra_disabled_collisions=set(),
                       weights=None, resolutions=None, max_distance=MAX_DISTANCE, ignore_collision_steps=0, custom_limits={}, diagnosis=False,
@@ -251,6 +254,7 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
     #return plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn)
 
 
+@preserve_pos_and_vel_wholebody
 def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_conf, current_tip_pos, cube_tip_pos, ik, obstacles=[], attachments=[],
                           init_joint_conf=None, disabled_collisions=set(), weights=None, resolutions=None, max_distance=MAX_DISTANCE, custom_limits={}, diagnosis=False,
                           vis_fn=None, use_rrt=False, use_incremental_rrt=False, use_ori=False, goal_threshold=0.1, **kwargs):
