@@ -289,7 +289,7 @@ def plan_wholebody_motion(cube_body, joints, finger_body, finger_joints, end_con
         def sample_goal():
             sample = rrt_goal_sample(goal_test, end_conf, goal_threshold, use_ori)
             return sample
-        return wholebody_rrt(start_conf, sample_goal, goal_test, distance_fn,
+        return wholebody_rrt(start_conf, end_conf, sample_goal, goal_test, distance_fn,
                              sample_fn, extend_fn, collision_fn, calc_tippos_fn,
                              sample_joint_conf_fn, ik, **kwargs)
     elif use_incremental_rrt:

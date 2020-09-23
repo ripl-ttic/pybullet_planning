@@ -122,12 +122,17 @@ def rrt_goal_sample(goal_test, end_pose, goal_threshold, ori_matters):
     return s
 
 
-def wholebody_rrt(q1, goal_sample_fn, goal_test, distance_fn, sample_fn,
+def wholebody_rrt(q1, q2, goal_sample_fn, goal_test, distance_fn, sample_fn,
                   extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn,
-                  ik, goal_probability=0.2, iterations=RRT_ITERATIONS,
+                  ik, goal_probability=0.66, iterations=RRT_ITERATIONS,
                   tree_frequency=1, max_time=INF, restarts=RRT_RESTARTS,
                   smoothing=RRT_SMOOTHING):
+
     start_time = time.time()
+    path, joint_path = __wholebody_direct_path(q1, q2, extend_fn, collision_fn, calc_tippos_fn, sample_joint_conf_fn, ik)
+    if path is not None:
+        return path, joint_path
+
     for _ in range(restarts):
         elapsed_time = time.time() - start_time
         if elapsed_time >= max_time:
@@ -215,6 +220,15 @@ def wholebody_incremental_rrt(q1, q2, use_ori, distance_fn, sample_fn,
         print('path is found with goal_threshold:', goal_threshold)
         prev_goal_threshold = goal_threshold
         prev_path, prev_joint_path = path, joint_path
+
+    # NOTE: Very rare, but there's a case that does not have a direct path but can achieve zero error!
+    if path is not None:
+        print('** [done] path is found with goal_threshold:', prev_goal_threshold)
+        return wholebody_smooth_path(prev_path, prev_joint_path, extend_fn,
+                                    collision_fn, ik, calc_tippos_fn,
+                                    sample_joint_conf_fn,
+                                        iterations=smoothing)
+
     return None, None
 
 
