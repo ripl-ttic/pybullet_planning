@@ -10,7 +10,7 @@ from pybullet_planning.interfaces.debug_utils import add_line
 from pybullet_planning.interfaces.robots.joint import get_custom_limits, get_joint_positions
 from pybullet_planning.interfaces.robots.collision import get_collision_fn, get_cube_tip_collision_fn
 
-from pybullet_planning.motion_planners import birrt, wholebody_rrt, wholebody_incremental_rrt, wholebody_best_effort_direct_path, wholebody_birrt, lazy_prm
+from pybullet_planning.motion_planners import birrt, wholebody_rrt, wholebody_incremental_rrt, wholebody_best_effort_direct_path, wholebody_birrt, lazy_prm, direct_path
 from pybullet_planning.interfaces.planner_interface.utils import preserve_pos_and_vel, preserve_pos_and_vel_wholebody
 import pybullet as p
 
@@ -196,24 +196,24 @@ def plan_waypoints_joint_motion(body, joints, waypoints, start_conf=None, obstac
             path.append(q)
     return path
 
-def plan_direct_joint_motion(body, joints, end_conf, **kwargs):
-    """plan a joint trajectory connecting the robot's current conf to the end_conf
+# def plan_direct_joint_motion(body, joints, end_conf, **kwargs):
+#     """plan a joint trajectory connecting the robot's current conf to the end_conf
 
-    Parameters
-    ----------
-    body : [type]
-        [description]
-    joints : [type]
-        [description]
-    end_conf : [type]
-        [description]
+#     Parameters
+#     ----------
+#     body : [type]
+#         [description]
+#     joints : [type]
+#         [description]
+#     end_conf : [type]
+#         [description]
 
-    Returns
-    -------
-    [type]
-        [description]
-    """
-    return plan_waypoints_joint_motion(body, joints, [end_conf], **kwargs)
+#     Returns
+#     -------
+#     [type]
+#         [description]
+#     """
+#     return plan_waypoints_joint_motion(body, joints, [end_conf], **kwargs)
 
 def check_initial_end(start_conf, end_conf, collision_fn, diagnosis=False):
     if collision_fn(start_conf, diagnosis):
@@ -252,6 +252,30 @@ def plan_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
         return None
     return birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, collision_fn, ignore_collision_steps=ignore_collision_steps, **kwargs)
     #return plan_lazy_prm(start_conf, end_conf, sample_fn, extend_fn, collision_fn)
+
+
+@preserve_pos_and_vel
+def plan_direct_joint_motion(body, joints, end_conf, obstacles=[], attachments=[],
+                             self_collisions=True, disabled_collisions=set(), extra_disabled_collisions=set(),
+                             weights=None, resolutions=None, max_distance=MAX_DISTANCE, ignore_collision_steps=0, custom_limits={}, diagnosis=False,
+                             constraint_fn=None, max_dist_on=None, **kwargs):
+    assert len(joints) == len(end_conf)
+    extend_fn = get_extend_fn(body, joints, resolutions=resolutions)
+    collision_fn = get_collision_fn(body, joints, obstacles=obstacles, attachments=attachments, self_collisions=self_collisions,
+                                    disabled_collisions=disabled_collisions, extra_disabled_collisions=extra_disabled_collisions,
+                                    custom_limits=custom_limits, max_distance=max_distance, max_dist_on=max_dist_on)
+    if constraint_fn is not None:
+        old_collision_fn = collision_fn
+
+        def _collision_and_constraint(q, diagnosis=False):
+            return old_collision_fn(q, diagnosis) or constraint_fn(q, diagnosis)
+        collision_fn = _collision_and_constraint
+
+    start_conf = get_joint_positions(body, joints)
+
+    if ignore_collision_steps == 0 and not check_initial_end(start_conf, end_conf, collision_fn, diagnosis=diagnosis):
+        return None
+    return direct_path(start_conf, end_conf, extend_fn, collision_fn, ignore_collision_steps=ignore_collision_steps)
 
 
 @preserve_pos_and_vel_wholebody
