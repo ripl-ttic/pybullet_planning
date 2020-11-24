@@ -116,7 +116,6 @@ def sample_multiple_ik_with_collision(ik, joint_collision_fn, sample_fn, tip_pos
     # test if any IK solution exists
     ik_sol = sample_ik_solution(ik, sample_fn, tip_positions)
     if ik_sol is None:
-        print('No IK solution is found...')
         return []
 
     while not done:
